@@ -1,0 +1,126 @@
+
+####################################################
+workflow:                                          #
+  rules:                                           #
+    - if: '$CI_COMMIT_BRANCH == "deploy"'          #
+      when: always                                 #
+                                                   # 
+####################################################
+
+
+variables:
+  REMOTE_SERVER_IP: "127.0.0.1"
+
+  PROJECT_EXCLUDE: $CI_PROJECT_DIR/exclude
+
+  KEY_PORT: "APP_PORT = 5000"
+  VALUE_PORT: "APP_PORT = 80"
+
+  KEY_DEBUG_MODE: "DEBUG_MODE = True"
+  VALUE_DEBUG_MODE: "DEBUG_MODE = False"
+
+  KEY_PRODUCTION_SERVER_URL: 'RESOURCE_FILE_URL = ""'
+  KEY_PRODUCTION_SERVER_URL_DEBUG: 'RESOURCE_FILE_URL = ""'
+  VALUE_PRODUCTION_SERVER_URL: 'RESOURCE_FILE_URL = ""'
+
+  KEY_DATA_RECEIVER: 'RESOURCE_DATA_RECEIVER = ""'
+  VALUE_DATA_RECEIVER: 'RESOURCE_DATA_RECEIVER = ""'
+
+  REMOTE_TMP_FOLDER: "/data/www/tmp"
+  REMOTE_TRANSPORT_FOLDER: "/data/www/data_transmitter"
+  OLD_REMOTE_TRANSPORT_FOLDER: "/data/www/bak"
+
+  REMOTE_REQUIREMENTS_FILE: "/data/www/data_transmitter/requirements.txt"
+  REMOTE_CONFIG_FILE: "/data/www/tmp/cfg/config.py"
+
+
+
+
+stages:
+  - check_directory
+  - deploy
+  - check_cronjob
+  - check_requirements
+
+check_directory:
+  stage: check_directory
+  script:
+    - ssh root@$REMOTE_SERVER_IP 'if [ ! -d /data ]; then mkdir /data; fi'
+    - ssh root@$REMOTE_SERVER_IP 'if [ ! -d /data/www ]; then mkdir -p /data/www; fi'
+    - ssh root@$REMOTE_SERVER_IP 'if [ ! -d /data/storages ]; then mkdir -p /data/storages; fi'
+    - ssh root@$REMOTE_SERVER_IP 'if [ ! -d /data/www/tmp ]; then mkdir -p /data/www/tmp; fi'
+  only:
+    - deploy
+  tags:
+    - test
+
+
+deliver_to_the_server:
+  stage: deploy
+  script:
+    - rsync -avz --exclude-from=$PROJECT_EXCLUDE $CI_PROJECT_DIR/ root@$REMOTE_SERVER_IP:/data/www/tmp
+  only:
+    - deploy
+
+  tags:
+    - test
+
+switch_to_production_mode:
+  stage: deploy
+  script:
+    - ssh root@$REMOTE_SERVER_IP "sed -i 's#$KEY_PORT#$VALUE_PORT#g' $REMOTE_CONFIG_FILE"
+    - ssh root@$REMOTE_SERVER_IP "sed -i 's#$KEY_PRODUCTION_SERVER_URL#$VALUE_PRODUCTION_SERVER_URL#g' $REMOTE_CONFIG_FILE"
+    - ssh root@$REMOTE_SERVER_IP "sed -i 's#$KEY_PRODUCTION_SERVER_URL_DEBUG#$VALUE_PRODUCTION_SERVER_URL#g' $REMOTE_CONFIG_FILE"
+    - ssh root@$REMOTE_SERVER_IP "sed -i 's#$KEY_DATA_RECEIVER#$VALUE_DATA_RECEIVER#g' $REMOTE_CONFIG_FILE"
+    - ssh root@$REMOTE_SERVER_IP "sed -i 's#$KEY_DEBUG_MODE#$VALUE_DEBUG_MODE#g' $REMOTE_CONFIG_FILE"
+
+  only:
+    - deploy
+
+  tags:
+    - test
+
+check_cronjob:
+  stage: check_cronjob
+  script:
+    - >
+      while inotifywait -q -e create,delete /data/www/ces_transport/; do
+        if [ -f /data/www/ces_transport/cronjob ]; then
+          echo "cronjob found" > /dev/null
+        fi
+          break
+      done
+  only:
+    - deploy
+
+  tags:
+    - test
+
+execute_action:
+  stage: check_cronjob
+  script:
+    - ssh root@$REMOTE_SERVER_IP "if [ -d $REMOTE_TRANSPORT_FOLDER ]; then mv $REMOTE_TRANSPORT_FOLDER $OLD_REMOTE_TRANSPORT_FOLDER; fi"
+    - ssh root@$REMOTE_SERVER_IP "cp -rf $OLD_REMOTE_TRANSPORT_FOLDER/var/ /var/log/ces_transport_log/"
+    - ssh root@$REMOTE_SERVER_IP "mv $REMOTE_TMP_FOLDER $REMOTE_TRANSPORT_FOLDER"
+    - ssh root@$REMOTE_SERVER_IP "if [ -d $REMOTE_TRANSPORT_FOLDER ]; then rm -rf $REMOTE_TRANSPORT_FOLDER/var && mv $OLD_REMOTE_TRANSPORT_FOLDER/var $REMOTE_TRANSPORT_FOLDER; fi"
+    - ssh root@$REMOTE_SERVER_IP "if [ ! -d $REMOTE_TRANSPORT_FOLDER/var/log ]; then mkdir -p $REMOTE_TRANSPORT_FOLDER/var/log; fi"
+    - ssh root@$REMOTE_SERVER_IP "mv $OLD_REMOTE_TRANSPORT_FOLDER/cfg/allowed_ip_list $REMOTE_TRANSPORT_FOLDER/cfg"
+    - ssh root@$REMOTE_SERVER_IP "chown -R www-data:www-data $REMOTE_TRANSPORT_FOLDER"
+    - ssh root@$REMOTE_SERVER_IP "chmod -R 730 $REMOTE_TRANSPORT_FOLDER"
+    - ssh root@$REMOTE_SERVER_IP "systemctl restart gunicorn.service" 
+    - ssh root@$REMOTE_SERVER_IP "if [ -d $OLD_REMOTE_TRANSPORT_FOLDER ]; then rm -rf $OLD_REMOTE_TRANSPORT_FOLDER; fi"
+
+  only:
+    - deploy
+
+  tags:
+    - test
+
+check_requirements:
+  stage: check_requirements
+  script:
+    - ssh root@$REMOTE_SERVER_IP "if [ -f $REMOTE_REQUIREMENTS_FILE ]; then pip3 install -r $REMOTE_REQUIREMENTS_FILE; fi"
+  only:
+    - deploy
+  tags:
+    - test

@@ -1,0 +1,8 @@
+.*
+__pycache__
+exclude
+var/
+cfg/allowed_ip_list
+Dockerfile
+docker-compose.yml
+mongo_user.sh

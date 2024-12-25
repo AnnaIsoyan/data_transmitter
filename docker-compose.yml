@@ -1,0 +1,29 @@
+version: '3'
+
+services:
+  web:
+    build: .
+    container_name: data_transmitter_web
+    volumes:
+      - .:/data/www/data_transmitter
+      - ./data/storages:/data/storages
+      - ./var:/data/www/data_transmitter/var
+    ports:
+      - "5500:5500"
+      - "5501:5678"
+    depends_on:
+      - mongodb
+    command: python app.py
+
+  mongodb:
+    container_name: data_transmitter_mongo
+    image: mongo
+    restart: always
+    volumes:
+      - ./mongo_user.sh:/data/docker-entrypoint-initdb.d/mongo_user.sh
+      - ./db:/data/db
+    environment:
+      MONGODB_USERNAME: 'hanuka'
+      MONGODB_PASSWORD: 't55!$k7Y4ngF'
+    ports:
+        - "27517:27017"

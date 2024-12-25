@@ -1,0 +1,8 @@
+/.idea/
+/uploads
+__pycache__/
+var/log/*
+db/
+data/
+.vscode
+__pycache__/app.cpython-311.pyc
