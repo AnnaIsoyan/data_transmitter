@@ -23,7 +23,7 @@ services:
       - ./mongo_user.sh:/data/docker-entrypoint-initdb.d/mongo_user.sh
       - ./db:/data/db
     environment:
-      MONGODB_USERNAME: 'hanuka'
-      MONGODB_PASSWORD: 't55!$k7Y4ngF'
+      MONGODB_USERNAME: 'qwerty'
+      MONGODB_PASSWORD: 'qwerty12'
     ports:
         - "27517:27017"
